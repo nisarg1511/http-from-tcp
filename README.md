@@ -63,3 +63,12 @@ curl -v http://localhost:8080/resource
 ```
 
 _Observe that the server logs `[Routing to PERSISTENT]`. The TCP socket remains attached and receptive to further frames until it explicitly hits the 5-second inactivity timeout._
+
+## 🔬 Key Engineering Insights & Discoveries
+
+During development and stress-testing using live browser refreshes, I uncovered two critical browser-to-server behaviors:
+
+1. **The Criticality of Header Draining in Persistent Connections**:
+   Omitting the header draining routine allows lingering HTTP headers (like `Host`, `User-Agent`) to pollute the Layer 4 TCP buffer. On the subsequent iteration of the persistent loop, the parser misinterprets these residual headers as a new HTTP Request Line. This causes a structural validation failure (`len(parts) != 3`) and violently tears down the connection.
+2. **Implicit Browser Retries & Idempotency**:
+   When the persistent connection is abruptly severed due to the socket validation crash described above, modern web browsers execute an immediate, silent retry. Because a browser refresh fires an _idempotent_ `GET` request, the client automatically spins up a brand new TCP connection behind the scenes to recover seamlessly. This manifests as rapid, subsequent connection triggers in the server console logging.
